@@ -3,16 +3,22 @@
 #  Powershell script to make nice columns from messy author data.
 #  Usage: Run this script in a dir that contains the csv, xlsx, or xls that contains the data.
 #  The script will show you all found files of that type and ask which one you want to open.
-#  Then it will show you all found columns, indicate which one(s) contain the data.
-#  It will then split the data into columns, show a preview, and asks to confirm before either updating the original file or exporting as a new file.
+#  Then it will show you all found columns, indicate which one(s) contain the data and which one contain the ID.
+#  It will then split the author data into columns, and exports it as a csv.
+#
+#  By S. Mok, 6-6-2023, s.mok@utwente.nl
+###########################
+
 Install-Module -Name ImportExcel
 
+#########
+# Get list of files and column names and let the user pick
+#########
 
-# get all possible files
+
 $files = Get-ChildItem -Path $pwd -Recurse -Include $('*.csv', '*.xlsx', '*.xls')
 
-# display list of found files, numbered, ask user which one to open
-
+#display list of found files, numbered, ask user which one to open
 $numberedFiles = $files | ForEach-Object -Begin { $index = 0 } -Process { $index++; "[$index] $($_.Name)" }
 
 Write-Host "Found files:" $numberedFiles
@@ -41,8 +47,9 @@ $selectedColumnIndex = Read-Host "Now enter the number of the column that contai
 $IDdata = $file | Select-Object $columns[$selectedColumnIndex-1]
 $IDdataname = $IDdata | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
 
-
-
+#####################
+# Loop through the data in the column and extract the info
+#####################
 
 $includeNonUT=$true
 $results = @()
@@ -82,9 +89,12 @@ foreach($entry in $data) {
                                         | ForEach-Object { $_.Matches } `
                                         | ForEach-Object { $_.Value } `
                                         | ForEach-Object {$_.Trim(" ")}
+                
                 if($department -like "*Taken over*") {
                     $department = $department -replace "Taken over by ", ""
                 }
+                #missing entries with: - Former organisational unit
+
                 $institute = $author    | Select-String -Pattern '[\sa-zA-Z\u00C0-\u024F\u1E00-\u1EFF\&\+\-]+(?=Organisational\sunit:\sInstitute)'  `
                                         | ForEach-Object { $_.Matches } `
                                         | ForEach-Object { $_.Value } `
@@ -148,10 +158,8 @@ foreach($entry in $data) {
     }
 }
 
-#loop through and remove duplicates??
 
 #######
-# 
 # Store the results in a CSV
 #######
 
