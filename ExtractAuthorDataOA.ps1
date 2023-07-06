@@ -15,17 +15,22 @@ Install-Module -Name ImportExcel
 # Get list of files and column names and let the user pick
 #########
 
-
 $files = Get-ChildItem -Path $pwd -Recurse -Include $('*.csv', '*.xlsx', '*.xls')
 
-#display list of found files, numbered, ask user which one to open
-$numberedFiles = $files | ForEach-Object -Begin { $index = 0 } -Process { $index++; "[$index] $($_.Name)" }
+#$numberedFiles = $files | ForEach-Object -Begin { $index = 0 } -Process { $index++; "[$index] $($_.Name)" }
 
-Write-Host "Found files:" $numberedFiles
-$selectedFileIndex = Read-Host "Enter the number of the file you want to open"
+Write-Host -BackgroundColor Black -ForegroundColor White "Found the following files:"
+
+$i=0
+foreach($file in $files) {
+  $i++
+  Write-Host -BackgroundColor Black -ForegroundColor Green "[$i] " -NoNewline
+  Write-Host -BackgroundColor Black -ForegroundColor White "$($file.Name)"
+}
+$selectedFileIndex = $(Write-Host "Enter the number of the file you want to open: " -ForegroundColor Blue -BackgroundColor Black  -NoNewline ; Read-Host)
 $workingfile = $files[$selectedFileIndex - 1]
 
-Write-Host "Opening file:" $workingfile
+Write-Host -ForegroundColor Green -BackgroundColor Black "Opening file:" $workingfile
 $fileType = $workingfile.Extension
 
 if($fileType -eq '.csv') {
@@ -37,29 +42,42 @@ if($fileType -eq '.csv') {
 
 }
 
-$numberedcolumns = $columns | ForEach-Object -Begin { $index = 0 } -Process { $index++; "[$index] $_" }
-Write-Host "Found columns:" $numberedcolumns
-$selectedColumnIndex = Read-Host "Enter the number of the column that contains the garbled data"
+Write-Host -BackgroundColor Black -ForegroundColor White  "Found the following columns:"
+$i=0
+$numcolumns = @()
+foreach($column in $columns) {
+  $i++
+  Write-Host -BackgroundColor Black -ForegroundColor Green "[$i] " -NoNewline
+  Write-Host -BackgroundColor Black -ForegroundColor White "$column"
+  $numcolumn=[ordered] @{ column = $column; number = $i }
+  $numcolumns += $numcolumn
+}
+$suggestedcolumn = ($numcolumns | Where-Object {$_.column -like "*Author*"}).number[0]
+$selectedColumnIndex =  $(Write-Host -ForegroundColor Blue -BackgroundColor Black "Enter the number of the column that contains the messy data. Suggested:" -NoNewline ; Write-Host -BackgroundColor Black -ForegroundColor Green "[$suggestedcolumn] :" -NoNewLine; Read-Host)
 $data = $file | Select-Object $columns[$selectedColumnIndex-1]
 $columnnamedata = $data | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+Write-Host -ForegroundColor Green -BackgroundColor Black "Selected column for authors:" $columnnamedata
 
-$selectedColumnIndex = Read-Host "Now enter the number of the column that contains the ID of the paper"
+$suggestedcolumn = ($numcolumns | Where-Object {$_.column -like "*#*"}).number[0]
+$selectedColumnIndex =  $(Write-Host -ForegroundColor Blue -BackgroundColor Black "Enter the number of the column that contains an unique ID per paper. Suggested:" -NoNewline ; Write-Host -BackgroundColor Black -ForegroundColor Green "[$suggestedcolumn] :" -NoNewLine; Read-Host)
 $IDdata = $file | Select-Object $columns[$selectedColumnIndex-1]
 $IDdataname = $IDdata | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
+Write-Host -ForegroundColor Green -BackgroundColor Black "Selected column for ID:" $IDdataname
 
 #####################
 # Loop through the data in the column and extract the info
 #####################
+
 
 $includeNonUT=$true
 $results = @()
 $i=0
 
 foreach($entry in $data) {
-    $i += 1
+
     $number = $IDdata[$i].$IDdataname
     $mess = $entry.$columnnamedata
-    
+    $i += 1
     #init arrays
     $authors = @()
     $result = @()
@@ -82,7 +100,7 @@ foreach($entry in $data) {
                 
                 $name = ""
                 $department = ""
-                $university = ""
+                $university = "Yes"
                 $institute = ""
 
                 $department = $author   | Select-String -Pattern '[\sa-zA-Z\u00C0-\u024F\u1E00-\u1EFF\&\+\-]+(?=Organisational\sunit:\sDepartment)' `
@@ -93,16 +111,16 @@ foreach($entry in $data) {
                 if($department -like "*Taken over*") {
                     $department = $department -replace "Taken over by ", ""
                 }
-                #missing entries with: - Former organisational unit
+                #missing entries with: - Former organisational unit???
 
                 $institute = $author    | Select-String -Pattern '[\sa-zA-Z\u00C0-\u024F\u1E00-\u1EFF\&\+\-]+(?=Organisational\sunit:\sInstitute)'  `
                                         | ForEach-Object { $_.Matches } `
                                         | ForEach-Object { $_.Value } `
                                         | ForEach-Object {$_.Trim(" ")}
-                $university = $author   | Select-String -Pattern '[\sa-zA-Z\u00C0-\u024F\u1E00-\u1EFF\&\+\-]+(?=Organisational\sunit:\sUniversity)'  `
+                <#$university = $author   | Select-String -Pattern '[\sa-zA-Z\u00C0-\u024F\u1E00-\u1EFF\&\+\-]+(?=Organisational\sunit:\sUniversity)'  `
                                         | ForEach-Object { $_.Matches } `
                                         | ForEach-Object { $_.Value } `
-                                        | ForEach-Object {$_.Trim(" ")}
+                                        | ForEach-Object {$_.Trim(" ")}#>
                 $name = $author         | Select-String -Pattern '[.\sa-zA-Z\u00C0-\u024F\u1E00-\u1EFF\&\+\-]+(?=:)' `
                                         | Select-Object -First 1  `
                                         | ForEach-Object { $_.Matches } `
@@ -114,7 +132,7 @@ foreach($entry in $data) {
                     Name = $name; 
                     Department = $department; 
                     Institute = $institute; 
-                    University = $university;
+                    UT = $university;
                     OriginalAuthor = $author
                                         }
 
@@ -125,7 +143,7 @@ foreach($entry in $data) {
             } elseif($includeNonUT) {
                 $name = ""
                 $department = ""
-                $university = "Probably Non-UT"
+                $university = "No"
                 $institute = ""
                 $name = $author.Trim(" ", ",")
                 if($name){ 
@@ -134,7 +152,7 @@ foreach($entry in $data) {
                         Name = $name; 
                         Department = $department; 
                         Institute = $institute; 
-                        University = $university;
+                        UT = $university;
                         OriginalAuthor = $author
                                             }
                     
@@ -148,7 +166,7 @@ foreach($entry in $data) {
             } elseif(-Not $includeNonUT){
                 $name = ""
                 $department = ""
-                $university = ""
+                $university = "No"
                 $institute = ""
                 $yesno = ""
             }
@@ -158,68 +176,195 @@ foreach($entry in $data) {
     }
 }
 
+Write-Host -ForegroundColor Green -BackgroundColor Black "Cleanup done. Extracted $($results.Count) authors from $($IDData.Count) entries."
 
 #######
 # Store the results in a CSV
 #######
 
-$filename = 'columnresults.csv'
+$filename = 'authorresults.csv'
 $output = Join-Path -Path $pwd -ChildPath $filename
-$loop = $true
 
-while ($loop) {
-  Write-Host "Creating $output to store all found urls with corresponding filenames."
-  if (Test-Path -Path $output -PathType Leaf) {
-    $prompt = Read-Host -Prompt "Cannot create $output because a file with that name already exists. Overwrite?
-    ([y]es/[c]hange name of output/[n]o, stop script)"
-    Switch($prompt) {
-      y {
-      "Overwriting file $output." ;
-      Remove-Item $output -Force ;
-      $loop = $false
-      }
+try {
+  New-Item $output -Force
+  Write-Host -ForegroundColor Green -BackgroundColor Black "Saving data to $output."
+}
 
-      n {
-        "Stopping script."; 
-        exit
-      }
-      
-      c {
-      $filename = Read-Host -Prompt "What should the filename be?
-      $pwd\[input]"
-      $output = $output = Join-Path -Path $pwd -ChildPath $filename
-      $test = Read-Host -Prompt "The filename will be $output. Is this correct? 
-      [y]es/[n]o, exit script"
-      Switch($test){
+catch {
+  throw $_.Exception.Message  
+}
+
+#add data to csv
+foreach($result in $results){
+  $result | Export-Csv $output -Append -NoTypeInformation -Force
+} 
+
+
+
+
+<#
+  Code for user-prompted output
+
+  #select output filepath
+  $loop = $true
+  while ($loop) {
+    Write-Host -ForegroundColor Blue -BackgroundColor Black "Creating $output to store data."
+    if (Test-Path -Path $output -PathType Leaf) {
+      $prompt =  $(Write-Host -ForegroundColor Red -BackgroundColor Black "Cannot create $output because a file with that name already exists. Overwrite?";
+      Write-Host -Foregroundcolor Blue -BackgroundColor Black "([y]es/[c]hange name of output/[n]o, stop script): "  -NoNewline ; Read-Host)
+      Switch($prompt) {
         y {
-          $loop = $false
+        "Overwriting file $output." ;
+        Remove-Item $output -Force ;
+        $loop = $false
         }
 
         n {
           "Stopping script."; 
           exit
         }
-      }
-      }
+        
+        c {
+        $filename =  $(Write-Host -ForegroundColor Blue -BackgroundColor Black -Prompt "What should the filename be? 
+        $pwd\[input]"  -NoNewline ; Read-Host)
+        $output = $output = Join-Path -Path $pwd -ChildPath $filename
+        $test =  $(Write-Host -ForegroundColor Blue -BackgroundColor Black -Prompt "The filename will be $output. Is this correct? 
+        [y]es/[n]o, exit script"  -NoNewline ; Read-Host)
+        Switch($test){
+          y {
+            $loop = $false
+          }
 
-      Default {
-        "Answer was not recognized. Stopping script."
-        exit
+          n {
+            "Stopping script."; 
+            exit
+          }
+        }
+        }
+
+        Default {
+          "Answer was not recognized. Stopping script."
+          exit
+        }
       }
+    } 
+    else {
+        try {
+          New-Item $output -Force
+          Write-Host -ForegroundColor Green -BackgroundColor Black "Found results will be added to $output."
+          $loop = $false
+        }
+        catch {
+          throw $_.Exception.Message  
+        }
+      }
+  }
+
+#>
+
+
+
+
+#######
+# Analysis & add to original sheet
+#######
+
+$resultsperID =Import-Csv $output | Group-Object ID
+$addedcolumn=@()
+
+foreach($result in $resultsperID){
+  $UT="Unknown"
+  $id=$result.Group.ID | Get-Unique
+  $utauthors=($result.Group | Where-Object UT -eq "Yes").count
+  $nonutauthors=($result.Group | Where-Object UT -eq "No").count
+  $totalauthors=$result.Group.count
+  $totalyes = ($result.Group | Where-Object {$_.CorrespondingAuthor -eq "Yes"} | Select-Object CorrespondingAuthor).count
+  $utyes = ($result.Group | Where-Object {$_.UT -eq "Yes"} | Where-Object {$_.CorrespondingAuthor -eq "Yes"} | Select-Object CorrespondingAuthor).count
+  $nonutyes = ($result.Group | Where-Object {$_.UT -eq "No"} | Where-Object {$_.CorrespondingAuthor -eq "Yes"} | Select-Object CorrespondingAuthor).Count
+  
+  #uncomment this for analysis in the prompt
+  <#$outputtable = @"
+                -------------------------------
+                    Analysis for paper $id
+                -------------------------------
+                        Authors         
+                    UT  $utauthors      
+                Non-UT  $nonutauthors   
+                 Total  $totalauthors 
+                 
+                        Corresponding Authors
+                    UT  $utyes
+                Non-UT  $nonutyes
+                 Total  $totalyes
+"@
+
+$outputtable #>
+
+  if($totalyes -eq 1){
+    if($utyes -eq 1){
+      $UT="Yes"
+    } elseif($nonutyes -ge 1) {
+      $UT="No"
+    } else{
+      $UT="Unknown"
     }
-  } 
-  else {
-      try {
-        New-Item $output -Force
-        Write-Host "Found results will be added to $output."
-        $loop = $false
-      }
-      catch {
-        throw $_.Exception.Message  
-      }
+  } elseif($totalyes -eq 0){
+    $UT="None"	
+  } else {
+    if($totalyes -eq $utyes){
+      $UT="Yes"
+    } elseif($totalyes -eq $nonutyes){
+      $UT="No"
+    } else {
+      $UT="Unknown"
     }
+
+  }
+  $corrauthdata = [ordered] @{ ID = $id; UTCorrespondingAuthor = $UT ; NrTotalCorresponding = $totalyes ; NrUTCorresponding = $utyes; NrNonUTCorresponding = $nonutyes}
+  $addedcolumn += $corrauthdata
 }
 
-foreach($result in $results){
-    $result | Export-Csv $output -Append -NoTypeInformation -Force
-} 
+#code to prompt user if they want to save over the original excel
+<#$addtosheet =  $(Write-Host -ForegroundColor Blue -BackgroundColor Black "Do you want to update the original sheet with the processed data? ([y]es/[n]o):" -NoNewline ; Read-Host) 	
+if($addtosheet -eq "y") {
+  $addtosheet=$true
+} elseif ($addtosheet -eq "n") {
+  $addtosheet=$false
+  Write-Host -ForegroundColor Red -BackgroundColor Black "Not updating the original sheet. Stopping the script."
+} else {
+  $addtosheet=$false
+  Write-Host -ForegroundColor Green -BackgroundColor Black "Answer was not recognized, defaulting to no and stopping the script."
+}#>
+
+$utyestotal = ($addedcolumn | Where-Object {$_.UTCorrespondingAuthor -eq "Yes"}).count
+$utnototal = ($addedcolumn | Where-Object {$_.UTCorrespondingAuthor -eq "No"}).count
+$utunktotal = ($addedcolumn | Where-Object {$_.UTCorrespondingAuthor -eq "Unknown"}).count
+
+Write-Host -ForegroundColor Green -BackgroundColor Black "Analysis done:
+    Total number of papers: $($IDData.Count) 
+    Total number of UT papers: $utyestotal 
+    Total number of non-UT papers: $utnototal 
+    Total number of unknown papers: $utunktotal "
+
+$addtosheet=$true
+if($addtosheet){
+  if($fileType -eq '.csv') {
+      $file 
+  } else {  #excel!
+      foreach($row in $file){
+        $id=$row.$IDdataname
+        $row | Add-Member -Force -MemberType NoteProperty -Name UTCorrespondingAuthor -Value ($addedcolumn | Where-Object ID -eq $row.$IDdataname).UTCorrespondingAuthor
+        
+       #Display underlying data for error checking
+        <# if($row.UTCorrespondingAuthor -eq "Unknown" -or $row.UTCorrespondingAuthor -eq "No") {
+          Write-Host "No corresponding UT author found for item $id. Details:"
+          Write-Host "Name                           UT?  CorrespondingAuthor?"
+          $errorresult = ($resultsperID.Group | Where-Object ID -eq $row.$IDdataname | Select-Object Name, UT, CorrespondingAuthor)
+          $errorresult
+       }#>
+
+      }
+      Write-Host -ForegroundColor Green -BackgroundColor Black "Adding final data to $workingfile in worksheet Automation results."
+      $file | Export-Excel $workingfile -Show -WorksheetName "Automation results"
+  }
+}
